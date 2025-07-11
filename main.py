@@ -1,10 +1,11 @@
 from flask import Flask, Response, jsonify
+from pathlib import Path
 import yfinance as yf
 import argparse
 import threading
 
 # For Debugging Purposes
-DEBUG_QUERY_THREAD = False
+DEBUG_QUERY_THREAD = True
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -13,6 +14,25 @@ def IsMarketOpen() -> bool:
     """
     Checks if the stock market is currently open
     """
+    try:
+        market = yf.Market("US", timeout=1)
+        status: str = market.status.get("status")
+        if status is None:
+            return False
+
+        if status.upper() == "CLOSED":
+            return False
+
+        return True
+
+    except Exception as e:
+        print(f"Error checking market status: {e}")
+        return False
+    
+def InTradingHours() -> bool:
+    """
+    Checks if the current time is within trading hours
+    """
     # Placeholder implementation
     return True
 
@@ -20,6 +40,7 @@ def QueryThread() -> None:
     """
     Queries stock data and maintains a collection of top gainer stocks
     """
+
     while True:
         # Query stock data and update the collection of top gainers
         pass
@@ -41,7 +62,12 @@ def main() -> None:
     except argparse.ArgumentError as e:
         print(f"Argument Parsing Failed - {e}")
         return
-    
+
+    output_folder = Path(args.o)
+    if not output_folder.exists():
+        print(f"Output folder does not exist - {output_folder}")
+        return
+
     if DEBUG_QUERY_THREAD:
         QueryThread()
     else:
