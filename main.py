@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import yfinance as yf
+import redis
+import argparse
 import threading
 import time
 
@@ -9,6 +11,9 @@ DEBUG_QUERY_THREAD = True
 
 # Other Constants
 QUERY_TICK_RATE = 10.0    # Seconds
+
+# Placeholder for Redis client if needed in the future
+redis_client = None
 
 def IsMarketOpen() -> bool:
     """
@@ -177,6 +182,22 @@ def main() -> None:
     """
     Main entry point of the application
     """
+
+    parser = argparse.ArgumentParser(description="Maintains a collection of top gainer stocks")
+    parser.add_argument("--ip", type=str, default="127.0.0.1", help="IP address to bind to")
+    parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
+
+    # Attempt to parse the input arguments of the application
+    try:
+        args = parser.parse_args()
+
+    except argparse.ArgumentError as e:
+        print(f"Argument Parsing Failed - {e}")
+        return
+    
+    # Initialize Redis Client
+    global redis_client
+    redis_client = redis.Redis(host=args.ip, port=args.port, db=0)
 
     if DEBUG_QUERY_THREAD:
         QueryThread()
