@@ -1,4 +1,4 @@
-from flask import Flask, Response, jsonify
+from flask import Flask
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import yfinance as yf
@@ -89,11 +89,13 @@ def GetTopGainers(count: int, percent_change: float, intraday_price: float, volu
         # Fetch the top gainers using the query and count
         results: dict          = yf.screen(query, count=count, sortField="percentchange")
         collection: list[dict] = results.get("quotes", [])
+        dt                     = datetime.now(ZoneInfo("America/New_York"))
         return [{
-                "symbol": item.get("symbol"),
-                "timestamp": int(time.time()),
-                "datetime": datetime.now(ZoneInfo("America/New_York")).isoformat(),
-                "datetime_readable": datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
+                "symbol"            : item.get("symbol"),
+                "timestamp"         : int(time.time()),
+                "day"               : dt.strftime("%A"),
+                "datetime_iso"      : dt.isoformat(),
+                "datetime_readable" : dt.strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
         } for item in collection]
 
     except Exception as e:
@@ -115,11 +117,40 @@ def QueryThread() -> None:
     # Sleep until it becomes the desired time
     time.sleep(QUERY_TICK_RATE - remainder - fractional)
 
+    # Gainers Data
+    todays_gainers: list[dict] = []
+
     while True:
 
         # Main Processing
         #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        # Only query for top gainers during trading hours
+        if InTradingHours():
 
+            # Only query for top gainers if the market is open
+            if IsMarketOpen():
+
+                # Query for the top gainers
+                gainers = GetTopGainers(
+                    count=10,
+                    percent_change=10.0,
+                    intraday_price=0.2,
+                    volume=100000
+                )
+
+                # Update the gainers data
+                todays_symbols = [g.get("symbol") for g in todays_gainers]
+                for gainer in gainers:
+                    if gainer.get("symbol") not in todays_symbols:
+                        todays_gainers.append(gainer)
+
+        # Outside of trading hours
+        elif not InTradingHours() and len(todays_gainers) > 0:
+            pass
+
+        # Outside of trading hours and todays_gainers is empty
+        else:
+            pass
 
         #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         # Worst case scenario for how long the code in the loop we're in to take is well below
