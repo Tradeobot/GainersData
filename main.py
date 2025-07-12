@@ -1,8 +1,6 @@
-from flask import Flask
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import yfinance as yf
-import argparse
 import threading
 import time
 
@@ -12,16 +10,13 @@ DEBUG_QUERY_THREAD = True
 # Other Constants
 QUERY_TICK_RATE = 10.0    # Seconds
 
-# Initialize Flask app
-app = Flask(__name__)
-
 def IsMarketOpen() -> bool:
     """
     Checks if the stock market is currently open
     """
     try:
         # Use yfinance to get market status
-        market = yf.Market("US", timeout=1)
+        market      = yf.Market("US", timeout=1)
         status: str = market.status.get("status")
         if status is None:
             return False
@@ -35,7 +30,7 @@ def IsMarketOpen() -> bool:
     except Exception as e:
         print(f"Error checking market status: {e}")
         return False
-    
+
 def InTradingHours() -> bool:
     """
     Checks if the current time is within trading hours
@@ -144,13 +139,26 @@ def QueryThread() -> None:
                     if gainer.get("symbol") not in todays_symbols:
                         todays_gainers.append(gainer)
 
+                # TODO: Update the todays_gainers entries stored in redis, with the new data
+
         # Outside of trading hours
         elif not InTradingHours() and len(todays_gainers) > 0:
-            pass
+
+            # TODO: Update the total gainers data stored in redis, with the new data
+            
+            # Clear the gainers data at the end of the trading day
+            todays_gainers.clear()
 
         # Outside of trading hours and todays_gainers is empty
         else:
-            pass
+            
+            # Now we can just wait until the next market opening
+            current_time  = datetime.now(ZoneInfo("America/New_York"))
+            next_opening  = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
+            time_to_sleep = (next_opening - current_time).total_seconds()
+
+            # Sleep until the right before the next market opening
+            time.sleep(time_to_sleep)
 
         #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         # Worst case scenario for how long the code in the loop we're in to take is well below
@@ -170,28 +178,12 @@ def main() -> None:
     Main entry point of the application
     """
 
-    parser = argparse.ArgumentParser(description="Maintains a collection of top gainer stocks")
-    parser.add_argument("--ip", type=str, default="127.0.0.1", help="IP address to bind to")
-    parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
-
-    # Attempt to parse the input arguments of the application
-    try:
-        args = parser.parse_args()
-
-    except argparse.ArgumentError as e:
-        print(f"Argument Parsing Failed - {e}")
-        return
-
     if DEBUG_QUERY_THREAD:
         QueryThread()
     else:
         # Create the query thread and start it
         query_thread = threading.Thread(target=QueryThread, daemon=True)
         query_thread.start()
-
-        # Start the Flask server if the query thread is alive
-        if query_thread.is_alive():
-            app.run(host=args.ip, port=args.port)
 
     return
 
