@@ -5,6 +5,7 @@ import redis
 import argparse
 import threading
 import time
+import json
 
 # For Debugging Purposes
 DEBUG_QUERY_THREAD = True
@@ -13,7 +14,7 @@ DEBUG_QUERY_THREAD = True
 QUERY_TICK_RATE = 10.0    # Seconds
 
 # Placeholder for Redis client if needed in the future
-redis_client = None
+redis_client: redis.Redis = None
 
 def IsMarketOpen() -> bool:
     """
@@ -156,11 +157,39 @@ def QueryThread() -> None:
 
         # Outside of trading hours and todays_gainers is empty
         else:
-            
-            # Now we can just wait until the next market opening
-            current_time  = datetime.now(ZoneInfo("America/New_York"))
-            next_opening  = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
-            time_to_sleep = (next_opening - current_time).total_seconds()
+
+            # Tell redis that this applications is asleeping until the next market opening
+            status = redis_client.get("status")
+            if status is None:
+                redis_client.set("status", json.dumps([
+                    "sleeping",
+                    {
+                        "since_timestamp": int(time.time()),
+                        "since_iso": datetime.now(ZoneInfo("America/New_York")).isoformat(),
+                        "since_readable": datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
+                    }
+                ]))
+            elif status[0] != "sleeping":
+                redis_client.set("status", json.dumps([
+                    "sleeping",
+                    {
+                        "since_timestamp": int(time.time()),
+                        "since_iso": datetime.now(ZoneInfo("America/New_York")).isoformat(),
+                        "since_readable": datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
+                    }
+                ]))
+
+            if datetime.now(ZoneInfo("America/New_York")).weekday() >= 5:
+                # If it's the weekend, sleep until the next Monday at 9:25 AM
+                current_time  = datetime.now(ZoneInfo("America/New_York"))
+                days_ahead    = 7 - current_time.weekday()
+                next_opening  = (current_time + timedelta(days=days_ahead)).replace(hour=9, minute=25, second=0, microsecond=0)
+                time_to_sleep = (next_opening - current_time).total_seconds()
+            else:
+                # Now we can just wait until the next market opening
+                current_time  = datetime.now(ZoneInfo("America/New_York"))
+                next_opening  = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
+                time_to_sleep = (next_opening - current_time).total_seconds()
 
             # Sleep until the right before the next market opening
             time.sleep(time_to_sleep)
@@ -186,6 +215,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Maintains a collection of top gainer stocks")
     parser.add_argument("--ip", type=str, default="127.0.0.1", help="IP address to bind to")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
+    parser.add_argument("--password", type=str, required=True, help="Password for Redis")
 
     # Attempt to parse the input arguments of the application
     try:
@@ -197,7 +227,7 @@ def main() -> None:
     
     # Initialize Redis Client
     global redis_client
-    redis_client = redis.Redis(host=args.ip, port=args.port, db=0)
+    redis_client = redis.Redis(host=args.ip, port=args.port, db=0, password=args.password)
 
     if DEBUG_QUERY_THREAD:
         QueryThread()
