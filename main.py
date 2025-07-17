@@ -3,12 +3,8 @@ from zoneinfo import ZoneInfo
 import yfinance as yf
 import redis
 import argparse
-import threading
 import time
 import json
-
-# For Debugging Purposes
-DEBUG_QUERY_THREAD = True
 
 # Other Constants
 QUERY_TICK_RATE = 10.0    # Seconds
@@ -131,6 +127,10 @@ def QueryThread() -> None:
             # Only query for top gainers if the market is open
             if IsMarketOpen():
 
+                # For debugging
+                if int(time.time()) % 3600 == 0:
+                    print("Market is open, querying for top gainers...")
+
                 # Query for the top gainers
                 gainers = GetTopGainers(
                     count=10,
@@ -152,6 +152,9 @@ def QueryThread() -> None:
 
         # Outside of trading hours
         elif not InTradingHours() and len(todays_gainers) > 0:
+
+            # For debugging
+            print("Trading day has ended, saving today's gainers to the gainers record.")
 
             gainers_record = redis_client.get("gainers_record")
             if gainers_record is None:
@@ -203,6 +206,9 @@ def QueryThread() -> None:
                 next_opening  = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
                 time_to_sleep = (next_opening - current_time).total_seconds()
 
+            # For debugging
+            print(f"Sleeping for {time_to_sleep} seconds until next market opening.")
+
             # Sleep until the right before the next market opening
             time.sleep(time_to_sleep)
 
@@ -251,12 +257,11 @@ def main() -> None:
     global redis_client
     redis_client = redis.Redis(host=args.ip, port=args.port, db=0, password=args.password)
 
-    if DEBUG_QUERY_THREAD:
-        QueryThread()
-    else:
-        # Create the query thread and start it
-        query_thread = threading.Thread(target=QueryThread, daemon=True)
-        query_thread.start()
+    # For debugging
+    print(f"Connected to Redis at {args.ip}:{args.port}")
+
+    # Start the Query Thread
+    QueryThread()
 
     return
 
