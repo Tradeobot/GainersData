@@ -139,45 +139,57 @@ def QueryThread() -> None:
                     volume=100000
                 )
 
-                # Update the gainers data
+                # Update the gainers data locally with any new gainers
                 todays_symbols = [g.get("symbol") for g in todays_gainers]
                 for gainer in gainers:
+
+                    # Only add the gainer if it is not already in the list
                     if gainer.get("symbol") not in todays_symbols:
                         todays_gainers.append(gainer)
 
-                # TODO: Update the todays_gainers entries stored in redis, with the new data
+                # Overwrite the todays_gainers entries stored in redis, with the new data
+                redis_client.set("todays_gainers", json.dumps(todays_gainers))
 
         # Outside of trading hours
         elif not InTradingHours() and len(todays_gainers) > 0:
 
-            # TODO: Update the total gainers data stored in redis, with the new data
-            
+            gainers_record = redis_client.get("gainers_record")
+            if gainers_record is None:
+
+                # If we don't have a gainers record yet, set it to todays_gainers
+                redis_client.set("gainers_record", json.dumps(todays_gainers))
+            else:
+                # If we already have a gainers record, we can append to it
+                existing_gainers: list[dict] = json.loads(gainers_record)
+
+                # Check if we have already recorded gainers for this day of this week
+                day_of_the_week = datetime.now(ZoneInfo("America/New_York")).strftime("%A")
+                if any(day_of_the_week in g for g in existing_gainers):
+
+                    # If we have already recorded gainers for this day, remove them
+                    existing_gainers = [g for g in existing_gainers if day_of_the_week not in g]
+
+                # Append today's gainers to the existing gainers record
+                existing_gainers += todays_gainers
+
+                # Update the gainers record in redis
+                redis_client.set("gainers_record", json.dumps(existing_gainers))
+
             # Clear the gainers data at the end of the trading day
             todays_gainers.clear()
 
-        # Outside of trading hours and todays_gainers is empty
+        # Outside of trading hours and todays_gainers is empty, just report status
         else:
 
-            # Tell redis that this applications is asleeping until the next market opening
-            status = redis_client.get("status")
-            if status is None:
-                redis_client.set("status", json.dumps([
-                    "sleeping",
-                    {
-                        "since_timestamp": int(time.time()),
-                        "since_iso": datetime.now(ZoneInfo("America/New_York")).isoformat(),
-                        "since_readable": datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
-                    }
-                ]))
-            elif status[0] != "sleeping":
-                redis_client.set("status", json.dumps([
-                    "sleeping",
-                    {
-                        "since_timestamp": int(time.time()),
-                        "since_iso": datetime.now(ZoneInfo("America/New_York")).isoformat(),
-                        "since_readable": datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
-                    }
-                ]))
+            # Tell redis that this applications is sleeping until the next market opening
+            redis_client.set("status", json.dumps([
+                "sleeping",
+                {
+                    "since_timestamp" : int(time.time()),
+                    "since_iso"       : datetime.now(ZoneInfo("America/New_York")).isoformat(),
+                    "since_readable"  : datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
+                }
+            ]))
 
             if datetime.now(ZoneInfo("America/New_York")).weekday() >= 5:
                 # If it's the weekend, sleep until the next Monday at 9:25 AM
@@ -193,6 +205,16 @@ def QueryThread() -> None:
 
             # Sleep until the right before the next market opening
             time.sleep(time_to_sleep)
+
+        # If we made it here, then the application is alive and well
+        redis_client.set("status", json.dumps([
+            "alive",
+            {
+                "since_timestamp" : int(time.time()),
+                "since_iso"       : datetime.now(ZoneInfo("America/New_York")).isoformat(),
+                "since_readable"  : datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
+            }
+        ]))
 
         #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         # Worst case scenario for how long the code in the loop we're in to take is well below
