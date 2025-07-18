@@ -130,7 +130,7 @@ def QueryThread() -> None:
                 # For debugging
                 if int(time.time()) % 3600 == 0:
                     date_time = datetime.now(ZoneInfo("America/New_York"))
-                    print(f"Market is open for {date_time.strftime("%A %m-%d-%y %I:%M:%S.%f %p %Z")}")
+                    print(f"Market is open for {date_time.strftime('%A %m-%d-%y %I:%M:%S.%f %p %Z')}")
 
                 # Query for the top gainers
                 gainers = GetTopGainers(
@@ -156,7 +156,7 @@ def QueryThread() -> None:
 
             # For debugging
             date_time = datetime.now(ZoneInfo("America/New_York"))
-            print(f"Market is closed for {date_time.strftime("%A %m-%d-%y %I:%M:%S.%f %p %Z")}")
+            print(f"Market is closed for {date_time.strftime('%A %m-%d-%y %I:%M:%S.%f %p %Z')}")
 
             gainers_record = redis_client.get("gainers_record")
             if gainers_record is None:
@@ -211,6 +211,17 @@ def QueryThread() -> None:
                     # If it's after market close, sleep until the next day at 9:25 AM otherwise wait until
                     # the market opens today at 9:25 AM
                     next_opening  = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
+                    time_to_sleep = (next_opening - current_time).total_seconds()
+
+                    wait_until_open = True
+
+                # If we wait until the market opens today, by the time we end up here the current time
+                # should always be after the if statement below so this should prevent any issues with falling
+                # into this code block multiple times in a row
+                elif current_time.hour <= 9 and current_time.minute <= 25:
+
+                    # If it's before market open, sleep until today at 9:25 AM
+                    next_opening  = current_time.replace(hour=9, minute=25, second=0, microsecond=0)
                     time_to_sleep = (next_opening - current_time).total_seconds()
 
                     wait_until_open = True
