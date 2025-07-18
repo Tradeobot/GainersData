@@ -129,7 +129,8 @@ def QueryThread() -> None:
 
                 # For debugging
                 if int(time.time()) % 3600 == 0:
-                    print("Market is open, querying for top gainers...")
+                    date_time = datetime.now(ZoneInfo("America/New_York"))
+                    print(f"Market is open for {date_time.strftime("%A %m-%d-%y %I:%M:%S.%f %p %Z")}")
 
                 # Query for the top gainers
                 gainers = GetTopGainers(
@@ -154,7 +155,8 @@ def QueryThread() -> None:
         elif not InTradingHours() and len(todays_gainers) > 0:
 
             # For debugging
-            print("Trading day has ended, saving today's gainers to the gainers record.")
+            date_time = datetime.now(ZoneInfo("America/New_York"))
+            print(f"Market is closed for {date_time.strftime("%A %m-%d-%y %I:%M:%S.%f %p %Z")}")
 
             gainers_record = redis_client.get("gainers_record")
             if gainers_record is None:
@@ -184,15 +186,9 @@ def QueryThread() -> None:
         # Outside of trading hours and todays_gainers is empty, just report status
         else:
 
-            # Tell redis that this applications is sleeping until the next market opening
-            redis_client.set("status", json.dumps([
-                "sleeping",
-                {
-                    "since_timestamp" : int(time.time()),
-                    "since_iso"       : datetime.now(ZoneInfo("America/New_York")).isoformat(),
-                    "since_readable"  : datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
-                }
-            ]))
+            # If its the weekend or after market closure on a weekday, we can just
+            # wait until the next market opening
+            wait_until_open = False
 
             if datetime.now(ZoneInfo("America/New_York")).weekday() >= 5:
                 # If it's the weekend, sleep until the next Monday at 9:25 AM
@@ -200,17 +196,43 @@ def QueryThread() -> None:
                 days_ahead    = 7 - current_time.weekday()
                 next_opening  = (current_time + timedelta(days=days_ahead)).replace(hour=9, minute=25, second=0, microsecond=0)
                 time_to_sleep = (next_opening - current_time).total_seconds()
+
+                wait_until_open = True
             else:
+
                 # Now we can just wait until the next market opening
-                current_time  = datetime.now(ZoneInfo("America/New_York"))
-                next_opening  = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
-                time_to_sleep = (next_opening - current_time).total_seconds()
+                current_time = datetime.now(ZoneInfo("America/New_York"))
 
-            # For debugging
-            print(f"Sleeping for {time_to_sleep} seconds until next market opening.")
+                # If we wait until the next market open, by the time we end up here the next day the current time
+                # should always be before market open, so this should prevent any issues with falling into an infinite
+                # loop of sleeping for one day at a time
+                if current_time.hour >= 16 and current_time.minute >= 0:
 
-            # Sleep until the right before the next market opening
-            time.sleep(time_to_sleep)
+                    # If it's after market close, sleep until the next day at 9:25 AM otherwise wait until
+                    # the market opens today at 9:25 AM
+                    next_opening  = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
+                    time_to_sleep = (next_opening - current_time).total_seconds()
+
+                    wait_until_open = True
+
+            if wait_until_open:
+
+                # Tell redis that this applications is sleeping until the next market opening
+                redis_client.set("status", json.dumps([
+                    "sleeping",
+                    {
+                        "since_timestamp" : int(time.time()),
+                        "since_iso"       : datetime.now(ZoneInfo("America/New_York")).isoformat(),
+                        "since_readable"  : datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
+                    }
+                ]))
+
+                # For debugging
+                date_time = datetime.now(ZoneInfo("America/New_York"))
+                print(f"Sleeping from {date_time.strftime('%A %m-%d-%y %I:%M:%S.%f %p %Z')} until market opens for {time_to_sleep} seconds")
+
+                # Sleep until the right before the next market opening
+                time.sleep(time_to_sleep)
 
         # If we made it here, then the application is alive and well
         redis_client.set("status", json.dumps([
@@ -265,5 +287,4 @@ def main() -> None:
 
     return
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__" : main()
