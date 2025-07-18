@@ -226,24 +226,24 @@ def QueryThread() -> None:
 
                     wait_until_open = True
 
-                if wait_until_open:
+            if wait_until_open:
 
-                    # Tell redis that this applications is sleeping until the next market opening
-                    redis_client.set("status", json.dumps([
-                        "sleeping",
-                        {
-                            "since_timestamp" : int(time.time()),
-                            "since_iso"       : datetime.now(ZoneInfo("America/New_York")).isoformat(),
-                            "since_readable"  : datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
-                        }
-                    ]))
+                # Tell redis that this applications is sleeping until the next market opening
+                redis_client.set("status", json.dumps([
+                    "sleeping",
+                    {
+                        "since_timestamp" : int(time.time()),
+                        "since_iso"       : datetime.now(ZoneInfo("America/New_York")).isoformat(),
+                        "since_readable"  : datetime.now(ZoneInfo("America/New_York")).strftime("%m-%d-%y %I:%M:%S.%f %p %Z")
+                    }
+                ]))
 
-                    # For debugging
-                    date_time = datetime.now(ZoneInfo("America/New_York"))
-                    print(f"Sleeping from {date_time.strftime('%A %m-%d-%y %I:%M:%S.%f %p %Z')} until market opens for {time_to_sleep} seconds")
+                # For debugging
+                date_time = datetime.now(ZoneInfo("America/New_York"))
+                print(f"Sleeping from {date_time.strftime('%A %m-%d-%y %I:%M:%S.%f %p %Z')} until market opens for {time_to_sleep} seconds")
 
-                    # Sleep until the right before the next market opening
-                    time.sleep(time_to_sleep)
+                # Sleep until the right before the next market opening
+                time.sleep(time_to_sleep)
 
         # If we made it here, then the application is alive and well
         redis_client.set("status", json.dumps([
