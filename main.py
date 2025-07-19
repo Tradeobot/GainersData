@@ -190,6 +190,9 @@ def QueryThread() -> None:
             # wait until the next market opening
             wait_until_open = False
 
+            # NOTE: There might also be a very small chance of a bug if the application
+            #       falls here exactly at midnight and becomes 00:00:01 after the condition
+            #       is checked which would lead to sleeping for the entire week.
             if datetime.now(ZoneInfo("America/New_York")).weekday() >= 5:
                 # If it's the weekend, sleep until the next Monday at 9:25 AM
                 current_time  = datetime.now(ZoneInfo("America/New_York"))
@@ -206,7 +209,7 @@ def QueryThread() -> None:
                 # If we wait until the next market open, by the time we end up here the next day the current time
                 # should always be before market open, so this should prevent any issues with falling into an infinite
                 # loop of sleeping for one day at a time
-                if current_time.hour >= 16 and current_time.minute >= 0:
+                if current_time.hour >= 16 and current_time.minute >= 0 and current_time.second >= 0:
 
                     # If it's after market close, sleep until the next day at 9:25 AM otherwise wait until
                     # the market opens today at 9:25 AM
@@ -218,13 +221,19 @@ def QueryThread() -> None:
                 # If we wait until the market opens today, by the time we end up here the current time
                 # should always be after the if statement below so this should prevent any issues with falling
                 # into this code block multiple times in a row
-                elif current_time.hour <= 9 and current_time.minute <= 25:
+                # NOTE: There might be a bug if the application falls here exactly at 9:24:59 and becomes
+                #       9:25:00 after the condition is checked which would lead to calculating a time to sleep
+                #       of 1 second or less and possibly even a negative time to sleep. Fixed by checking if
+                #       the time to sleep is positive before going to sleep
+                elif current_time.hour <= 9 and current_time.minute < 25:
 
                     # If it's before market open, sleep until today at 9:25 AM
                     next_opening  = current_time.replace(hour=9, minute=25, second=0, microsecond=0)
                     time_to_sleep = (next_opening - current_time).total_seconds()
 
-                    wait_until_open = True
+                    # We can prevent a potential bug checking if the time to sleep is positive
+                    if time_to_sleep > 0:
+                        wait_until_open = True
 
             if wait_until_open:
 
