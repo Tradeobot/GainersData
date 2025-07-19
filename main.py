@@ -213,7 +213,13 @@ def QueryThread() -> None:
 
                     # If it's after market close, sleep until the next day at 9:25 AM otherwise wait until
                     # the market opens today at 9:25 AM
-                    next_opening  = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
+                    next_opening = (current_time + timedelta(days=1)).replace(hour=9, minute=25, second=0, microsecond=0)
+
+                    if next_opening.weekday() >= 5:
+                        # If the next day is a weekend, adjust to the following Monday
+                        days_ahead    = 7 - next_opening.weekday()
+                        next_opening  = (next_opening + timedelta(days=days_ahead)).replace(hour=9, minute=25, second=0, microsecond=0)
+
                     time_to_sleep = (next_opening - current_time).total_seconds()
 
                     wait_until_open = True
